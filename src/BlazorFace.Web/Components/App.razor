@@ -1,40 +1,31 @@
-@page "/"
+@using BlazorFace.Components
+@using BlazorFace.Components.Layout
 @using Microsoft.AspNetCore.Components.Web
-@namespace BlazorFace.Pages
-@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
 
 <!DOCTYPE html>
 <html lang="en" class="h-100">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <base href="~/" />
+    <base href="/" />
     <meta name="theme-color" content="#ffffff">
-    <link rel="stylesheet" href="lib/bootstrap/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="lib/bootstrap-icons/font/bootstrap-icons.css" />
-    <link rel="stylesheet" href="lib/highlightjs/styles/vs.min.css" />
-    <link href="css/site.css" rel="stylesheet" />
-    <link href="BlazorFace.Web.styles.css" rel="stylesheet" />
+    <ResourcePreloader />
+    <link rel="stylesheet" href="@Assets["lib/bootstrap/css/bootstrap.min.css"]" />
+    <link rel="stylesheet" href="@Assets["lib/bootstrap-icons/font/bootstrap-icons.css"]" />
+    <link rel="stylesheet" href="@Assets["lib/highlightjs/styles/vs.min.css"]" />
+    <link href="@Assets["css/site.css"]" rel="stylesheet" />
+    <link href="@Assets["BlazorFace.Web.styles.css"]" rel="stylesheet" />
+    <ImportMap />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
+    <HeadOutlet @rendermode="RenderMode.InteractiveServer" />
 </head>
 <body class="d-flex flex-column h-100">
-    <component type="typeof(App)" render-mode="ServerPrerendered" />
+    <Routes @rendermode="RenderMode.InteractiveServer" />
+    <ReconnectModal />
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
 
-    <div id="blazor-error-ui">
-        <environment include="Staging,Production">
-            An error has occurred. This application may no longer respond until reloaded.
-        </environment>
-        <environment include="Development">
-            An unhandled exception has occurred. See browser dev tools for details.
-        </environment>
-        <a href="" class="reload">Reload</a>
-        <a class="dismiss">🗙</a>
-    </div>
-
-    <script src="_framework/blazor.web.js"></script>
-    <script src="lib/bootstrap/js/bootstrap.bundle.min.js"></script>
-    <script src="lib/highlightjs/highlight.min.js"></script>
+    <script src="@Assets["lib/bootstrap/js/bootstrap.bundle.min.js"]"></script>
+    <script src="@Assets["lib/highlightjs/highlight.min.js"]"></script>
 
     <!-- https://learn.microsoft.com/en-us/aspnet/core/blazor/images?view=aspnetcore-7.0#stream-image-data -->
     <script>

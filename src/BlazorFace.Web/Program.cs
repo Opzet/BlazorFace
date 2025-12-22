@@ -17,8 +17,8 @@ namespace BlazorFace.Web
             ConfigureBlazorFaceServices(builder);
 
             // Add services to the container.
-            builder.Services.AddRazorPages();
-            builder.Services.AddServerSideBlazor();
+            builder.Services.AddRazorComponents()
+                .AddInteractiveServerComponents();
 
             builder.Services.AddSingleton<IFileOpener, DefaultFileOpener>();
 
@@ -42,28 +42,17 @@ namespace BlazorFace.Web
                 app.UseHsts();
             }
 
-            if (app.Environment.IsDevelopment())
-            {
-                // this is required because the media folder that is just linked into the wwwroot
-                // will not be copied in debug builds.
-                app.UseStaticFiles(new StaticFileOptions
-                {
-                    FileProvider = new PhysicalFileProvider(
-                        Path.Combine(builder.Environment.ContentRootPath, @"../../media")),
-                    RequestPath = "/media",
-                });
-            }
-
+            app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
             app.UseHttpsRedirection();
 
-            app.UseStaticFiles();
-
-            app.UseRouting();
+            app.UseAntiforgery();
 
             app.UseSentryTracing();
 
-            app.MapBlazorHub();
-            app.MapFallbackToPage("/_Host");
+            app.MapStaticAssets();
+            app.MapRazorComponents<Components.App>()
+                .AddInteractiveServerRenderMode()
+                .AddAdditionalAssemblies(typeof(BlazorFace.Components.Routes).Assembly);
 
             app.Run();
         }

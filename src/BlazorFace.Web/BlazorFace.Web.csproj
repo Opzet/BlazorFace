@@ -10,6 +10,10 @@
 
     <!-- copying of media does not work with container fast mode -->
     <ContainerDevelopmentMode>Regular</ContainerDevelopmentMode>
+
+    <!-- I'm not sure why, but blazor.web.js is missing on publish without this knob -->
+    <!-- https://learn.microsoft.com/en-us/aspnet/core/blazor/project-structure?view=aspnetcore-10.0#location-of-the-blazor-script -->
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,6 +29,6 @@
 
   <ItemGroup Label="Global-Tool Watch">
     <Watch Include="..\BlazorFace\**\*.razor" />
-</ItemGroup>
+  </ItemGroup>
 
 </Project>
