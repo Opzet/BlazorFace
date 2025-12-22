@@ -29,6 +29,7 @@
     <PackageReference Include="Microsoft.Extensions.ObjectPool" />
     <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" />
+    <PackageReference Include="Microsoft.Web.LibraryManager.Build" />
     <PackageReference Include="NodaTime" />
     <PackageReference Include="Plotly.Blazor" />
     <PackageReference Include="SixLabors.ImageSharp" />
