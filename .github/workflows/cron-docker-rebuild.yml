@@ -2,13 +2,13 @@ name: Regular base image update check
 
 on:
   workflow_dispatch:
-  #schedule:
-  #  - cron:  '0 1 * * *'
+  schedule:
+    - cron:  '0 1 * * *'
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  BASE_IMAGE: mcr.microsoft.com/dotnet/aspnet:7.0
+  BASE_IMAGE: mcr.microsoft.com/dotnet/aspnet:10.0
 
 jobs:
   check_base_image_updated:
