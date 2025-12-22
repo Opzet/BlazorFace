@@ -4,6 +4,7 @@
 @using Plotly.Blazor;
 @using Plotly.Blazor.Interop;
 @using Plotly.Blazor.Traces;
+@using System.Text.Json
 @inject IFilenameGrouper grouper;
 @inject IJSRuntime JS
 
@@ -364,7 +365,12 @@
 
     public async void HoverAction(IEnumerable<EventDataPoint> e)
     {
-        _hoveredIndex = e.FirstOrDefault()?.PointNumber as int?;
+        _hoveredIndex = e.FirstOrDefault()?.PointNumber switch
+        {
+            int i => i,
+            JsonElement { ValueKind: JsonValueKind.Number } je => je.GetInt32(),
+            _ => (int?)null,
+        };
         if (AlignedFaceImages is not null && _hoveredIndex.HasValue && AlignedFaceImages.Count > _hoveredIndex.Value)
         {
             await JS.SetImageStream(AlignedFaceImages[_hoveredIndex.Value], HoveredPointFaceImgId);
