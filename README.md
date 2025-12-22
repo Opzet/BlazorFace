@@ -58,7 +58,7 @@ Google Play and the Google Play logo are trademarks of Google LLC.
 ### Using Docker
 
 ```bash
-docker run -p 8080:80 ghcr.io/georg-jung/explain-face-rec:latest
+docker run -p 8080:8080 ghcr.io/georg-jung/explain-face-rec:latest
 ```
 
 As soon as your container is running, you can access the tutorial at [localhost:8080](http://localhost:8080).
