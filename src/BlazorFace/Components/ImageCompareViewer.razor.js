@@ -1,4 +1,4 @@
-import "/image-compare-viewer-1.5.0/image-compare-viewer.min.js";
+import "/lib/image-compare-viewer/dist/image-compare-viewer.min.js";
 
 export function mount(id, showLabels, leftLabel, rightLabel) {
     const options = {
