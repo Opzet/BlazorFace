@@ -8,13 +8,11 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
-
-        MainPage = new MainPage();
     }
 
     protected override Window CreateWindow(IActivationState? activationState)
     {
-        var window = base.CreateWindow(activationState);
+        var window = new Window(new MainPage());
         if (DeviceInfo.Current.Platform == DevicePlatform.WinUI)
         {
             window.Title = "Understanding Face Recognition";
