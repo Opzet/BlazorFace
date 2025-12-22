@@ -36,5 +36,33 @@ namespace BlazorFace.Services
 </svg>");
             return svg;
         }
+
+        public static string DrawRectangles(Rectangle viewbox, double strokeWidth, IEnumerable<Rectangle> rectangles, string additionalSvgAttributes)
+        {
+            var sb = new StringBuilder();
+            foreach (var r in rectangles)
+            {
+                sb.Append(FormattableString.Invariant(@$"
+<rect
+  style=""fill:none;stroke:currentColor;stroke-width:{strokeWidth}""
+  width=""{r.Width}""
+  height=""{r.Height}""
+  x=""{r.X}""
+  y=""{r.Y}"" />"));
+            }
+
+            var svg = FormattableString.Invariant(@$"
+<svg
+  viewBox=""{viewbox.X} {viewbox.Y} {viewbox.Width} {viewbox.Height}""
+  version=""1.1""
+  xmlns=""http://www.w3.org/2000/svg""
+  xmlns:svg=""http://www.w3.org/2000/svg""
+  {additionalSvgAttributes}>
+  <g>
+    {sb}
+  </g>
+</svg>");
+            return svg;
+        }
     }
 }

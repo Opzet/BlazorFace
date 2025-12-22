@@ -5,9 +5,28 @@
 @using SixLabors.ImageSharp.Drawing.Processing;
 @using SixLabors.ImageSharp.PixelFormats;
 @using BlazorFace.Components
+@using BlazorFace.Services
 
 @inject IJSRuntime JS
 @inject ObjectPool<IFaceDetectorWithLandmarks> detectorPool
+
+<style>
+    .img-overlay-wrap {
+        position: relative;
+        display: inline-block; /* shrinks container to image size */
+        transition: transform 150ms ease-in-out;
+    }
+
+        .img-overlay-wrap .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 4;
+            pointer-events: none;
+        }
+</style>
 
 <div class="d-flex flex-row align-items-center justify-content-center row mb-3">
     <span class="col-12 col-sm-auto mb-2 mb-sm-0 text-center">Bounding Box Color:</span>
@@ -33,7 +52,14 @@
 }
 
 <div class="d-flex flex-row justify-content-center mt-3 restrict-child-image-size">
-    <img id="@imgId" class="mw-100" />
+    <div class="img-overlay-wrap">
+        <img id="@imgId" class="mw-100" />
+        @if (_rectangles != null && _rectangles.Any())
+        {
+            var strokeWidth = Math.Max(_viewbox.Width / 400.0, 1.0);
+            @((MarkupString)SvgDrawer.DrawRectangles(_viewbox, strokeWidth, _rectangles, $"class=\"overlay\" style=\"color: #{_bboxColor.ToHex()}\""))
+        }
+    </div>
 </div>
 
 @code {
@@ -56,10 +82,14 @@
         _ => throw new NotImplementedException(),
     };
 
+    private List<Rectangle> _rectangles = new();
+    private Rectangle _viewbox;
+
     protected override async Task Clear()
     {
         await base.Clear();
         await JS.ClearImage(imgId);
+        _rectangles.Clear();
     }
 
     protected override async Task<string?> OnImageLoadedAsync(Image<Rgb24> image)
@@ -68,23 +98,21 @@
 
         try
         {
-            int DrawDetections()
+            int Detect()
             {
                 var scrfd = (FaceAiSharp.ScrfdDetector)det;
                 var old = scrfd.Options.ConfidenceThreshold;
                 scrfd.Options.ConfidenceThreshold = _detectionThreshold;
                 var detections = det.DetectFaces(image);
                 scrfd.Options.ConfidenceThreshold = old;
-                var rectangles = detections.Where(x => x.Confidence >= _detectionThreshold).Select(x => Rectangle.Round(x.Box)).ToList();
-
-                var brush = Brushes.Solid(_bboxColor);
-                image.DrawRectangles(brush, rectangles);
+                _rectangles = detections.Where(x => x.Confidence >= _detectionThreshold).Select(x => Rectangle.Round(x.Box)).ToList();
+                _viewbox = new Rectangle(0, 0, image.Width, image.Height);
                 return detections.Count;
             }
 #if ANDROID
-            var cnt = await Task.Run(DrawDetections);
+            var cnt = await Task.Run(Detect);
 #else
-            var cnt = DrawDetections();
+            var cnt = Detect();
 #endif
             await JS.SetImageStream(image, imgId);
             StateHasChanged();
