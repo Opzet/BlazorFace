@@ -63,6 +63,10 @@ docker run -p 8080:8080 ghcr.io/georg-jung/explain-face-rec:latest
 
 As soon as your container is running, you can access the tutorial at [localhost:8080](http://localhost:8080).
 
+## Development
+
+Client-side libraries are restored with [LibMan](src/BlazorFace/libman.json) and are not checked into source control. Run `libman restore` in `src/BlazorFace` before running the web app or publishing to populate `wwwroot/lib` (install the LibMan CLI with `dotnet tool install -g Microsoft.Web.LibraryManager.Cli` if needed).
+
 ## Credits
 
 Created in the context of Georg Jung's master thesis, supervised by [Dr. Guido Rößling](https://www.roessling.com/). Thanks for the supervision and the great support!
