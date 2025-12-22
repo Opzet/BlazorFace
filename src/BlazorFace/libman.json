@@ -1,15 +1,15 @@
 {
   "version": "1.0",
-  "defaultProvider": "unpkg",
+  "defaultProvider": "cdnjs",
   "libraries": [
     {
       "library": "bootstrap@5.3.3",
       "destination": "wwwroot/lib/bootstrap",
       "files": [
-        "dist/css/bootstrap.min.css",
-        "dist/css/bootstrap.min.css.map",
-        "dist/js/bootstrap.bundle.min.js",
-        "dist/js/bootstrap.bundle.min.js.map"
+        "css/bootstrap.min.css",
+        "css/bootstrap.min.css.map",
+        "js/bootstrap.bundle.min.js",
+        "js/bootstrap.bundle.min.js.map"
       ]
     },
     {
@@ -23,7 +23,7 @@
       ]
     },
     {
-      "library": "highlight.js@11.9.0",
+      "library": "highlight.js@11.11.1",
       "destination": "wwwroot/lib/highlightjs",
       "files": [
         "styles/vs.min.css",
