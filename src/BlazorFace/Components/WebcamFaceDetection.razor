@@ -1,0 +1,289 @@
+@using FaceAiSharp;
+@using FaceAiSharp.Extensions;
+@using SixLabors.ImageSharp.Drawing.Processing;
+@using SixLabors.ImageSharp.PixelFormats;
+@using BlazorFace.Services
+@using System.Timers
+@using Microsoft.JSInterop
+
+@inject IJSRuntime JS
+@inject ObjectPool<IFaceDetectorWithLandmarks> detectorPool
+
+@implements IAsyncDisposable
+
+<style>
+    .webcam-container {
+        position: relative;
+        display: inline-block;
+        max-width: 100%;
+    }
+
+    .webcam-video {
+        max-width: 100%;
+        display: block;
+    }
+
+    .webcam-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 4;
+        pointer-events: none;
+    }
+
+    .webcam-canvas {
+        display: none;
+    }
+</style>
+
+<div class="d-flex flex-column gap-3">
+    <div class="d-flex flex-row align-items-center justify-content-center row mb-3">
+        <span class="col-12 col-sm-auto mb-2 mb-sm-0 text-center">Bounding Box Color:</span>
+        <MultiChoiceRadio Class="col-auto" Choices="@(new[] {Yellow, Red, Blue, Green})" @bind-SelectedChoice="@_bboxColorString" />
+    </div>
+
+    <div class="d-flex flex-row align-items-center row justify-content-center">
+        <div class="col-12 col-sm-8 col-lg-4">
+            @{
+                var thresholdId = Guid.NewGuid().ToString("n");
+            }
+            <label for="@thresholdId" class="form-label">Detection Threshold: @_detectionThreshold.ToString("0.00")</label>
+            <input
+                @bind-value="@_detectionThreshold"
+                @bind-value:event="oninput"
+                @bind-value:culture="@System.Globalization.CultureInfo.InvariantCulture"
+                type="range" class="form-range" min="0.01" max="1.0" step="0.01" id="@thresholdId">
+        </div>
+    </div>
+
+    <div class="d-flex flex-row justify-content-center gap-2">
+        @if (!_isStreaming)
+        {
+            <button class="btn btn-primary" @onclick="StartWebcam">
+                <i class="bi bi-camera-video"></i> Start Webcam
+            </button>
+        }
+        else
+        {
+            <button class="btn btn-danger" @onclick="StopWebcam">
+                <i class="bi bi-stop-circle"></i> Stop Webcam
+            </button>
+        }
+    </div>
+
+    @if (!_isStreaming && _errorMessage == null)
+    {
+        <div class="alert alert-info small" role="alert">
+            <i class="bi bi-info-circle"></i> 
+            <strong>Note:</strong> Webcam access requires HTTPS and camera permissions. 
+            Supported browsers: Chrome, Edge, Firefox, Safari.
+        </div>
+    }
+
+    @if (_errorMessage != null)
+    {
+        <div class="alert alert-danger" role="alert">
+            <i class="bi bi-exclamation-triangle-fill"></i> @_errorMessage
+            @if (_errorMessage.Contains("permission", StringComparison.OrdinalIgnoreCase))
+            {
+                <hr />
+                <p class="mb-0 small">
+                    <strong>How to enable camera permissions:</strong><br />
+                    • Click the camera icon in your browser's address bar<br />
+                    • Select "Allow" for camera access<br />
+                    • Refresh the page and try again
+                </p>
+            }
+        </div>
+    }
+
+    @if (_faceCount >= 0)
+    {
+        <div class="alert alert-info text-center" role="alert">
+            Detected @_faceCount face@(_faceCount != 1 ? "s" : "")
+        </div>
+    }
+
+    <div class="d-flex flex-row justify-content-center">
+        <div class="webcam-container">
+            <video id="@_videoId" class="webcam-video" autoplay playsinline></video>
+            <canvas id="@_canvasId" class="webcam-canvas"></canvas>
+            @if (_rectangles != null && _rectangles.Any())
+            {
+                var strokeWidth = Math.Max(_viewbox.Width / 400.0, 1.0);
+                @((MarkupString)SvgDrawer.DrawRectangles(_viewbox, strokeWidth, _rectangles, $"class=\"webcam-overlay\" style=\"color: #{_bboxColor.ToHex()}\""))
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private const string Yellow = nameof(Yellow);
+    private const string Red = nameof(Red);
+    private const string Blue = nameof(Blue);
+    private const string Green = nameof(Green);
+
+    private readonly string _videoId = Guid.NewGuid().ToString("n");
+    private readonly string _canvasId = Guid.NewGuid().ToString("n");
+
+    private float _detectionThreshold = 0.5f;
+    private bool _isStreaming = false;
+    private string? _errorMessage;
+    private int _faceCount = -1;
+
+    private string _bboxColorString = Yellow;
+    private Color _bboxColor => _bboxColorString switch
+    {
+        Red => Color.Red,
+        Yellow => Color.Yellow,
+        Blue => Color.DeepSkyBlue,
+        Green => Color.LimeGreen,
+        _ => throw new NotImplementedException(),
+    };
+
+    private List<Rectangle> _rectangles = new();
+    private Rectangle _viewbox;
+
+    private System.Timers.Timer? _detectionTimer;
+    private IJSObjectReference? _module;
+    private bool _isProcessing = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/WebcamFaceDetection.razor.js");
+        }
+    }
+
+    private async Task StartWebcam()
+    {
+        try
+        {
+            _errorMessage = null;
+            StateHasChanged();
+
+            if (_module == null)
+            {
+                throw new InvalidOperationException("JavaScript module not loaded. Please refresh the page.");
+            }
+
+            await _module.InvokeVoidAsync("startWebcam", _videoId);
+            _isStreaming = true;
+
+            // Start detection timer (process frames every 200ms)
+            _detectionTimer = new System.Timers.Timer(200);
+            _detectionTimer.Elapsed += async (sender, e) => await ProcessFrame();
+            _detectionTimer.AutoReset = true;
+            _detectionTimer.Start();
+
+            StateHasChanged();
+        }
+        catch (JSException jsEx)
+        {
+            // Extract the actual error message from JavaScript
+            var message = jsEx.Message;
+            if (message.Contains("Error:"))
+            {
+                var startIndex = message.IndexOf("Error:") + 6;
+                message = message.Substring(startIndex).Trim();
+            }
+            _errorMessage = message;
+            _isStreaming = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+            _isStreaming = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task StopWebcam()
+    {
+        _detectionTimer?.Stop();
+        _detectionTimer?.Dispose();
+        _detectionTimer = null;
+
+        if (_module != null)
+        {
+            await _module.InvokeVoidAsync("stopWebcam");
+        }
+
+        _isStreaming = false;
+        _rectangles.Clear();
+        _faceCount = -1;
+        StateHasChanged();
+    }
+
+    private async Task ProcessFrame()
+    {
+        if (_isProcessing || !_isStreaming || _module == null)
+            return;
+
+        try
+        {
+            _isProcessing = true;
+
+            // Capture frame from video to canvas and get image data
+            var imageDataUrl = await _module.InvokeAsync<string>("captureFrame", _videoId, _canvasId);
+
+            if (string.IsNullOrEmpty(imageDataUrl))
+                return;
+
+            // Convert base64 to image
+            var base64Data = imageDataUrl.Split(',')[1];
+            var imageBytes = Convert.FromBase64String(base64Data);
+
+            using var ms = new MemoryStream(imageBytes);
+            using var image = await Image.LoadAsync<Rgb24>(ms);
+
+            var det = detectorPool.Get();
+            try
+            {
+                var scrfd = (FaceAiSharp.ScrfdDetector)det;
+                var old = scrfd.Options.ConfidenceThreshold;
+                scrfd.Options.ConfidenceThreshold = _detectionThreshold;
+
+#if ANDROID
+                var detections = await Task.Run(() => det.DetectFaces(image));
+#else
+                var detections = det.DetectFaces(image);
+#endif
+
+                scrfd.Options.ConfidenceThreshold = old;
+                _rectangles = detections.Where(x => x.Confidence >= _detectionThreshold).Select(x => Rectangle.Round(x.Box)).ToList();
+                _viewbox = new Rectangle(0, 0, image.Width, image.Height);
+                _faceCount = _rectangles.Count;
+
+                await InvokeAsync(StateHasChanged);
+            }
+            finally
+            {
+                detectorPool.Return(det);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Silently handle errors during processing to avoid spamming
+            Console.WriteLine($"Error processing frame: {ex.Message}");
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await StopWebcam();
+
+        if (_module != null)
+        {
+            await _module.DisposeAsync();
+        }
+    }
+}

@@ -1,0 +1,1688 @@
+@page "/ShiftClock"
+@using FaceAiSharp;
+@using FaceAiSharp.Extensions;
+@using SixLabors.ImageSharp.Drawing.Processing;
+@using SixLabors.ImageSharp.PixelFormats;
+@using BlazorFace.Services
+@using BlazorFace.Models
+@using System.Timers
+@using Microsoft.JSInterop
+
+@inject IJSRuntime JS
+@inject IEmployeeRepository employeeRepo
+@inject FaceRecognitionService faceRecognitionService
+
+@implements IAsyncDisposable
+
+<PageTitle>Shift Clock - Face Recognition</PageTitle>
+
+<style>
+    :root {
+        --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        --success-gradient: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        --warning-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        --info-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        --dark-bg: #1a1a2e;
+        --card-bg: #ffffff;
+        --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+        --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.12);
+        --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.16);
+    }
+
+    .fade-in {
+        animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    @@keyframes fadeIn {
+        from { 
+            opacity: 0; 
+            transform: translateY(-20px) scale(0.95);
+        }
+        to { 
+            opacity: 1; 
+            transform: translateY(0) scale(1);
+        }
+    }
+
+    .pulse {
+        animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    @@keyframes pulse {
+        0%, 100% { 
+            opacity: 1; 
+            transform: scale(1);
+        }
+        50% { 
+            opacity: 0.8; 
+            transform: scale(1.02);
+        }
+    }
+
+    /* Modern Card Styling */
+    .card {
+        border: none;
+        border-radius: 16px;
+        box-shadow: var(--shadow-sm);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        overflow: hidden;
+    }
+
+    .card:hover {
+        box-shadow: var(--shadow-md);
+        transform: translateY(-2px);
+    }
+
+    .card-header {
+        border: none;
+        padding: 1.25rem 1.5rem;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+    }
+
+    .card-header.bg-primary {
+        background: var(--primary-gradient) !important;
+    }
+
+    .card-body {
+        padding: 1.5rem;
+    }
+
+    /* Webcam Styling */
+    .webcam-video {
+        border-radius: 16px;
+        box-shadow: var(--shadow-lg);
+        border: 4px solid #f0f0f0;
+        transition: all 0.3s ease;
+    }
+
+    .webcam-video:hover {
+        border-color: #667eea;
+    }
+
+    .webcam-container {
+        position: relative;
+    }
+
+    /* Modern Alert Styling */
+    .alert {
+        border: none;
+        border-radius: 12px;
+        padding: 1.25rem 1.5rem;
+        margin-bottom: 1.25rem;
+        box-shadow: var(--shadow-sm);
+        backdrop-filter: blur(10px);
+    }
+
+    .alert-success {
+        background: linear-gradient(135deg, rgba(17, 153, 142, 0.1) 0%, rgba(56, 239, 125, 0.1) 100%);
+        border-left: 4px solid #11998e;
+        color: #0d7662;
+    }
+
+    .alert-info {
+        background: linear-gradient(135deg, rgba(79, 172, 254, 0.1) 0%, rgba(0, 242, 254, 0.1) 100%);
+        border-left: 4px solid #4facfe;
+        color: #2563eb;
+    }
+
+    .alert-warning {
+        background: linear-gradient(135deg, rgba(255, 193, 7, 0.1) 0%, rgba(255, 87, 34, 0.1) 100%);
+        border-left: 4px solid #ffc107;
+        color: #c77700;
+    }
+
+    .alert-primary {
+        background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+        border-left: 4px solid #667eea;
+        color: #5a67d8;
+    }
+
+    .alert-danger {
+        background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.1) 100%);
+        border-left: 4px solid #ef4444;
+        color: #dc2626;
+    }
+
+    .alert h5 {
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        font-size: 1.1rem;
+    }
+
+    /* Auto Clock Timer */
+    .auto-clock-timer {
+        font-size: 4rem;
+        font-weight: 800;
+        background: var(--success-gradient);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        text-shadow: 0 4px 16px rgba(17, 153, 142, 0.3);
+        animation: timerPulse 1s ease-in-out infinite;
+    }
+
+    @@keyframes timerPulse {
+        0%, 100% { 
+            transform: scale(1);
+            filter: brightness(1);
+        }
+        50% { 
+            transform: scale(1.05);
+            filter: brightness(1.2);
+        }
+    }
+
+    /* Modern LED Status Indicators */
+    .led-panel {
+        display: flex;
+        gap: 2rem;
+        padding: 1.5rem;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        border-radius: 16px;
+        justify-content: center;
+        align-items: center;
+        box-shadow: var(--shadow-md);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .led-panel::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.5), transparent);
+        animation: scanline 3s linear infinite;
+    }
+
+    @@keyframes scanline {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+    }
+
+    .led-indicator {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+        position: relative;
+    }
+
+    .led {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: #2a2a3e;
+        box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.5);
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        border: 2px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .led::after {
+        content: '';
+        position: absolute;
+        top: 20%;
+        left: 20%;
+        width: 40%;
+        height: 40%;
+        background: rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+
+    .led.active::after {
+        opacity: 1;
+    }
+
+    .led.detected {
+        background: #2a2a3e;
+    }
+
+    .led.detected.active {
+        background: radial-gradient(circle, #ffd54f, #ffc107);
+        box-shadow: 0 0 20px #ffc107, 0 0 40px rgba(255, 193, 7, 0.5), inset 0 0 10px rgba(255, 255, 255, 0.3);
+        animation: ledPulse 1s ease-in-out infinite;
+        border-color: #ffd54f;
+    }
+
+    .led.recognizing {
+        background: #2a2a3e;
+    }
+
+    .led.recognizing.active {
+        background: radial-gradient(circle, #4dd0e1, #17a2b8);
+        box-shadow: 0 0 20px #17a2b8, 0 0 40px rgba(23, 162, 184, 0.5), inset 0 0 10px rgba(255, 255, 255, 0.3);
+        animation: ledPulse 0.5s ease-in-out infinite;
+        border-color: #4dd0e1;
+    }
+
+    .led.identified {
+        background: #2a2a3e;
+    }
+
+    .led.identified.active {
+        background: radial-gradient(circle, #66bb6a, #11998e);
+        box-shadow: 0 0 20px #11998e, 0 0 40px rgba(17, 153, 142, 0.5), inset 0 0 10px rgba(255, 255, 255, 0.3);
+        border-color: #66bb6a;
+    }
+
+    @@keyframes ledPulse {
+        0%, 100% { 
+            opacity: 1;
+            transform: scale(1);
+        }
+        50% { 
+            opacity: 0.7;
+            transform: scale(1.1);
+        }
+    }
+
+    .led-label {
+        font-size: 0.7rem;
+        color: #7a7a8c;
+        text-transform: uppercase;
+        font-weight: 700;
+        letter-spacing: 1px;
+        transition: all 0.3s ease;
+    }
+
+    .led-label.active {
+        color: #ffffff;
+        text-shadow: 0 2px 8px rgba(255, 255, 255, 0.3);
+    }
+
+    /* Modern Button Styling */
+    .btn {
+        border-radius: 10px;
+        font-weight: 600;
+        padding: 0.625rem 1.25rem;
+        border: none;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        letter-spacing: 0.3px;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-md);
+    }
+
+    .btn:active {
+        transform: translateY(0);
+    }
+
+    .btn-primary {
+        background: var(--primary-gradient);
+        border: none;
+    }
+
+    .btn-success {
+        background: var(--success-gradient);
+        border: none;
+    }
+
+    .btn-danger {
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    }
+
+    .btn-warning {
+        background: var(--warning-gradient);
+        border: none;
+        color: white;
+    }
+
+    .btn-outline-secondary,
+    .btn-outline-danger,
+    .btn-outline-light {
+        border-width: 2px;
+        font-weight: 600;
+    }
+
+    /* Modern Keypad */
+    .keypad {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.75rem;
+        max-width: 320px;
+        margin: 0 auto;
+    }
+
+    .keypad-btn {
+        padding: 1.25rem;
+        font-size: 1.5rem;
+        font-weight: 700;
+        border: 2px solid #e5e7eb;
+        background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: var(--shadow-sm);
+        color: #374151;
+    }
+
+    .keypad-btn:hover {
+        background: var(--primary-gradient);
+        color: white;
+        border-color: transparent;
+        transform: translateY(-2px) scale(1.02);
+        box-shadow: var(--shadow-md);
+    }
+
+    .keypad-btn:active {
+        transform: translateY(0) scale(0.98);
+    }
+
+    .employee-id-display {
+        font-size: 2rem;
+        font-weight: 700;
+        text-align: center;
+        padding: 1.25rem;
+        background: linear-gradient(135deg, #f9fafb 0%, #ffffff 100%);
+        border: 2px solid #e5e7eb;
+        border-radius: 12px;
+        min-height: 70px;
+        letter-spacing: 6px;
+        font-family: 'SF Mono', 'Consolas', monospace;
+        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Page Header */
+    .page-header {
+        background: var(--primary-gradient);
+        color: white;
+        padding: 2rem 0;
+        margin: -1rem -1rem 2rem -1rem;
+        border-radius: 0 0 24px 24px;
+        box-shadow: var(--shadow-lg);
+    }
+
+    .page-header h1 {
+        font-weight: 800;
+        font-size: 2rem;
+        margin: 0;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    /* List Group Modern */
+    .list-group-item {
+        border: none;
+        border-radius: 12px !important;
+        margin-bottom: 0.75rem;
+        padding: 1rem 1.25rem;
+        box-shadow: var(--shadow-sm);
+        transition: all 0.2s ease;
+    }
+
+    .list-group-item:hover {
+        box-shadow: var(--shadow-md);
+        transform: translateX(4px);
+    }
+
+    /* Badge Modern */
+    .badge {
+        padding: 0.375rem 0.75rem;
+        font-weight: 600;
+        border-radius: 8px;
+        letter-spacing: 0.3px;
+    }
+
+    /* Debug Panel */
+    .debug-panel {
+        font-family: 'SF Mono', 'Consolas', monospace;
+        font-size: 0.75rem;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    }
+
+    /* Scrollbar Styling */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+    }
+</style>
+
+<div class="container-fluid px-4 py-3">
+    <div class="page-header">
+        <div class="container">
+            <h1>
+                <i class="bi bi-clock-history me-2"></i> Shift Clock
+            </h1>
+            <p class="mb-0 mt-2 opacity-90">Advanced Face Recognition Time Tracking</p>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Webcam Area -->
+        <div class="col-lg-7 mb-4">
+            <div class="card shadow-lg">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-camera-video me-2"></i> Face Recognition
+                    </h5>
+                </div>
+                <div class="card-body">
+                    @{
+                        // Capture state in local variables to prevent race conditions with background timers
+                        var recognizedEmployee = _recognizedEmployee;
+                    }
+
+                    <!-- LED Status Indicators -->
+                    <div class="led-panel mb-3">
+                        <div class="led-indicator">
+                            <div class="led detected @(_faceDetected ? "active" : "")"></div>
+                            <span class="led-label @(_faceDetected ? "active" : "")">Detected</span>
+                        </div>
+                        <div class="led-indicator">
+                            <div class="led recognizing @(_isRecognizing ? "active" : "")"></div>
+                            <span class="led-label @(_isRecognizing ? "active" : "")">Recognizing</span>
+                        </div>
+                        <div class="led-indicator">
+                            <div class="led identified @(recognizedEmployee != null ? "active" : "")"></div>
+                            <span class="led-label @(recognizedEmployee != null ? "active" : "")">Identified</span>
+                        </div>
+                    </div>
+
+                    @* Auto-Clock Countdown *@
+                    @if (recognizedEmployee != null && _autoClockCountdown > 0)
+                    {
+                        <div class="alert alert-success fade-in" role="alert">
+                            <div class="text-center">
+                                <h5><i class="bi bi-person-check"></i> Welcome, @recognizedEmployee.Name!</h5>
+                                <p class="mb-0">Employee ID: @recognizedEmployee.EmployeeId</p>
+                                <p class="mb-0 small">Confidence: @(_matchConfidence.ToString("P0"))</p>
+                                <hr />
+                                <div class="auto-clock-timer">@_autoClockCountdown</div>
+                                <p class="mb-0">Auto-@(recognizedEmployee.IsCurrentlyIn ? "clocking out" : "clocking in")...</p>
+                                <button class="btn btn-sm btn-outline-secondary mt-2" @onclick="CancelAutoClock">
+                                    <i class="bi bi-x"></i> Cancel
+                                </button>
+                            </div>
+                        </div>
+                    }
+                    @* Identified Employee (After Countdown) *@
+                    else if (recognizedEmployee != null)
+                    {
+                        <div class="alert alert-success fade-in" role="alert">
+                            <h5><i class="bi bi-person-check"></i> Welcome, @recognizedEmployee.Name!</h5>
+                            <p class="mb-0">Employee ID: @recognizedEmployee.EmployeeId</p>
+                            <p class="mb-0 small">Confidence: @(_matchConfidence.ToString("P0"))</p>
+                            @if (_lastClockAction != null)
+                            {
+                                <div class="mt-2 text-success">
+                                    <i class="bi bi-check-circle-fill"></i> @_lastClockAction
+                                </div>
+                            }
+                        </div>
+                    }
+                    @* Initializing State *@
+                    else if (_isInitializing)
+                    {
+                        <div class="alert alert-info fade-in" role="alert">
+                            <div class="d-flex align-items-center">
+                                <div class="spinner-border spinner-border-sm me-2" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <span>Initializing face recognition system...</span>
+                            </div>
+                        </div>
+                    }
+                    @* Empty Database - First Time User *@
+                    else if (!_isStreaming && !_autoStartFailed && _employees.Count == 0)
+                    {
+                        <div class="alert alert-primary fade-in" role="alert">
+                            <h5><i class="bi bi-info-circle"></i> Welcome to Shift Clock</h5>
+                            <p class="mb-2">No employees registered yet. To get started:</p>
+                            <ol class="mb-2 small">
+                                <li>Click "Start Camera" below</li>
+                                <li>Position your face in view</li>
+                                <li>Enter your Employee ID and Name</li>
+                                <li>You're all set!</li>
+                            </ol>
+                        </div>
+                    }
+                    @* Face Detected but Not Identified - Show Keypad *@
+                    else if (_isStreaming && _noMatchFound && _landmarkCollectionCount >= RequiredLandmarkSamples && _currentEmbedding != null)
+                    {
+                        <div class="alert alert-warning fade-in" role="alert">
+                            <h5><i class="bi bi-person-x"></i> Face Not Recognized</h5>
+                            <p class="mb-0 small">Enter Employee ID to register</p>
+                        </div>
+                    }
+
+                    @if (_errorMessage != null)
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            <i class="bi bi-exclamation-triangle-fill"></i> @_errorMessage
+                        </div>
+                    }
+
+                    <div class="mb-4 d-flex flex-row justify-content-center gap-3">
+                        @if (!_isStreaming)
+                        {
+                            <button class="btn btn-primary btn-lg px-4" @onclick="StartWebcam" disabled="@_isInitializing">
+                                @if (_isInitializing)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                    <text>Initializing</text>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-camera-video me-2"></i>
+                                    <text>Start Camera</text>
+                                }
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-danger btn-lg px-4" @onclick="StopWebcam">
+                                <i class="bi bi-stop-circle me-2"></i> Stop Camera
+                            </button>
+                        }
+                    </div>
+
+                    <div class="webcam-container d-flex justify-content-center mb-3">
+                        <div style="position: relative; display: inline-block; width: 100%; max-width: 640px;">
+                            <video id="@_videoId" class="webcam-video w-100" style="display: block;" autoplay playsinline></video>
+                            <canvas id="@_canvasId" style="display: none;"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Clock In/Out Actions or Registration Keypad -->
+            @if (recognizedEmployee != null && _autoClockCountdown == 0)
+            {
+                <div class="card mt-4 fade-in shadow-lg">
+                    <div class="card-body">
+                        <div class="d-grid gap-3">
+                            @if (!recognizedEmployee.IsCurrentlyIn)
+                            {
+                                <button class="btn btn-success btn-lg py-3" @onclick="() => ClockIn(false)">
+                                    <i class="bi bi-box-arrow-in-right me-2"></i> Clock In Now
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-warning btn-lg py-3" @onclick="() => ClockOut(false)">
+                                    <i class="bi bi-box-arrow-right me-2"></i> Clock Out Now
+                                </button>
+                            }
+                            <button class="btn btn-outline-secondary" @onclick="CancelRecognition">
+                                <i class="bi bi-x-circle me-2"></i> Cancel
+                            </button>
+                            <button class="btn btn-outline-danger" @onclick="RejectRecognition">
+                                <i class="bi bi-trash me-2"></i> Not Me (Delete Profile)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+            else if (_isStreaming && (_isRegistering || (_noMatchFound && _landmarkCollectionCount >= RequiredLandmarkSamples && _currentEmbedding != null)))
+            {
+                <div class="card mt-4 fade-in shadow-lg">
+                    <div class="card-header bg-warning text-dark">
+                        <h6 class="mb-0">
+                            <i class="bi bi-person-plus me-2"></i> New Employee Registration
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="small text-muted mb-4">
+                            <i class="bi bi-shield-check me-1"></i> Face verified over @_landmarkCollectionCount frames. Enter Employee ID:
+                        </p>
+
+                        <!-- Employee ID Display -->
+                        <div class="employee-id-display mb-4">
+                            @if (string.IsNullOrEmpty(_keypadInput))
+                            {
+                                <span class="text-muted">_ _ _ _ _</span>
+                            }
+                            else
+                            {
+                                @_keypadInput
+                            }
+                        </div>
+
+                        <!-- Numeric Keypad -->
+                        <div class="keypad mb-4">
+                            @for (int i = 1; i <= 9; i++)
+                            {
+                                var digit = i;
+                                <button class="keypad-btn" @onclick="() => KeypadPress(digit.ToString())">@digit</button>
+                            }
+                            <button class="keypad-btn" @onclick="KeypadClear">
+                                <i class="bi bi-backspace"></i>
+                            </button>
+                            <button class="keypad-btn" @onclick='() => KeypadPress("0")'>0</button>
+                            <button class="keypad-btn" @onclick="KeypadSubmit" disabled="@(string.IsNullOrWhiteSpace(_keypadInput))">
+                                <i class="bi bi-check-lg"></i>
+                            </button>
+                        </div>
+
+                        <!-- Name Entry (appears after ID entered) -->
+                        @if (_showNameEntry)
+                        {
+                            <div class="mb-4">
+                                <label for="employeeName" class="form-label fw-bold">
+                                    <i class="bi bi-person me-1"></i> Full Name
+                                </label>
+                                <input type="text" 
+                                       class="form-control form-control-lg" 
+                                       id="employeeName" 
+                                       @bind="_newEmployeeName" 
+                                       @bind:event="oninput"
+                                       placeholder="Enter full name" 
+                                       style="border-radius: 10px; border-width: 2px;"
+                                       autofocus />
+                            </div>
+                            <div class="d-grid gap-3">
+                                <button class="btn btn-primary btn-lg py-3" 
+                                        @onclick="RegisterNewEmployee" 
+                                        disabled="@(string.IsNullOrWhiteSpace(_newEmployeeName))">
+                                    <i class="bi bi-person-check me-2"></i> Register Employee
+                                </button>
+                                <button class="btn btn-outline-secondary" @onclick="CancelRegistration">
+                                    <i class="bi bi-x me-2"></i> Cancel
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Status and History -->
+        <div class="col-lg-5">
+            <!-- Debug Panel -->
+            <div class="card shadow-lg mb-4">
+                <div class="card-header debug-panel text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-bug me-2"></i> Debug Monitor
+                    </h5>
+                    <div>
+                        <button class="btn btn-sm btn-outline-light me-2" @onclick="ClearDebugLog">
+                            <i class="bi bi-trash"></i> Clear
+                        </button>
+                        <button class="btn btn-sm btn-outline-light" @onclick="() => _showDebugPanel = !_showDebugPanel">
+                            <i class="bi bi-@(_showDebugPanel ? "eye-slash" : "eye")"></i>
+                        </button>
+                    </div>
+                </div>
+                @if (_showDebugPanel)
+                {
+                    <div class="card-body debug-panel text-light" style="max-height: 350px; overflow-y: auto;">
+                        <!-- Performance Stats -->
+                        <div class="mb-3 pb-3 border-bottom border-secondary">
+                            <div class="row g-1">
+                                <div class="col-6">
+                                    <span class="text-muted">Frames:</span> <strong class="text-info">@_frameCount</strong>
+                                </div>
+                                <div class="col-6">
+                                    <span class="text-muted">Avg Time:</span> <strong class="text-warning">@(_avgFrameTime.ToString("F0"))ms</strong>
+                                </div>
+                                <div class="col-6">
+                                    <span class="text-muted">Detections:</span> <strong class="text-success">@_detectionAttempts</strong>
+                                </div>
+                                <div class="col-6">
+                                    <span class="text-muted">Recognitions:</span> <strong class="text-danger">@_recognitionAttempts</strong>
+                                </div>
+                                <div class="col-6">
+                                    <span class="text-muted">State:</span> 
+                                    @if (_isProcessing)
+                                    {
+                                        <span class="badge bg-warning">Processing</span>
+                                    }
+                                    else if (_isRecognizing)
+                                    {
+                                        <span class="badge bg-info">Recognizing</span>
+                                    }
+                                    else if (_faceDetected)
+                                    {
+                                        <span class="badge bg-success">Face Detected</span>
+                                    }
+                                    else if (_isStreaming)
+                                    {
+                                        <span class="badge bg-secondary">Scanning</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-dark">Idle</span>
+                                    }
+                                </div>
+                                <div class="col-6">
+                                    <span class="text-muted">Samples:</span> <strong class="text-primary">@_landmarkCollectionCount/@RequiredLandmarkSamples</strong>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Log Entries -->
+                        @{
+                            // Create a snapshot to avoid collection modification issues during rendering
+                            var logSnapshot = _debugLog?.ToList() ?? new List<string>();
+                        }
+                        @if (logSnapshot.Any())
+                        {
+                            @foreach (var log in logSnapshot)
+                            {
+                                if (!string.IsNullOrWhiteSpace(log))
+                                {
+                                    // Truncate extremely long log entries (keep first 500 chars)
+                                    var displayLog = log.Length > 500 ? log.Substring(0, 497) + "..." : log;
+                                    <div class="@GetLogClass(displayLog)" style="padding: 2px 0; line-height: 1.4; word-wrap: break-word; overflow-wrap: break-word;">
+                                        @displayLog
+                                    </div>
+                                }
+                            }
+                        }
+                        else
+                        {
+                            <p class="text-muted mb-0">No debug logs yet. Start the camera to begin.</p>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="card shadow-lg mb-4">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-people me-2"></i> Registered Employees
+                    </h5>
+                </div>
+                <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                    @if (_employees.Any())
+                    {
+                        <div class="list-group">
+                            @foreach (var emp in _employees)
+                            {
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>@emp.Name</strong>
+                                        <br />
+                                        <small class="text-muted">ID: @emp.EmployeeId</small>
+                                        @if (emp.IsCurrentlyIn)
+                                        {
+                                            <br />
+                                            <span class="badge bg-success">Clocked In</span>
+                                        }
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteEmployee(emp.Id)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted text-center">No employees registered yet.</p>
+                    }
+                </div>
+            </div>
+
+            <div class="card shadow-lg">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-clock-history me-2"></i> Recent Clock Events
+                    </h5>
+                </div>
+                <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                    @if (_clockEvents.Any())
+                    {
+                        <div class="list-group">
+                            @foreach (var evt in _clockEvents.Take(20))
+                            {
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>@evt.EmployeeName</strong>
+                                            @if (evt.EventType == ClockEventType.ClockIn)
+                                            {
+                                                <span class="badge bg-success ms-2">In</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-warning ms-2">Out</span>
+                                            }
+                                        </div>
+                                        <small class="text-muted">
+                                            @evt.Timestamp.ToLocalTime().ToString("MMM dd, HH:mm")
+                                        </small>
+                                    </div>
+                                    <small class="text-muted">ID: @evt.EmployeeId | Confidence: @evt.MatchConfidence.ToString("P0")</small>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted text-center">No clock events yet.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    // Constants
+    private const int RequiredLandmarkSamples = 3;
+    private const int AutoClockDelaySeconds = 3;
+    private const int FrameProcessingIntervalMs = 1500; // Increased from 800ms to give more processing time
+
+    // Component IDs
+    private readonly string _videoId = Guid.NewGuid().ToString("n");
+    private readonly string _canvasId = Guid.NewGuid().ToString("n");
+
+    // State flags
+    private bool _isInitializing = true;
+    private bool _isStreaming = false;
+    private bool _isProcessing = false;
+    private bool _isRecognizing = false;
+    private bool _faceDetected = false;
+    private bool _hasAttemptedRecognition = false;
+    private bool _noMatchFound = false;
+    private bool _isRegistering = false; // Persists during registration workflow
+    private bool _autoStartFailed = false;
+
+    // Recognition state
+    private Employee? _recognizedEmployee;
+    private double _matchConfidence;
+    private float[]? _currentEmbedding;
+    private List<PointF[]> _landmarkCollection = new();
+    private int _landmarkCollectionCount = 0;
+
+    // Auto-clock state
+    private int _autoClockCountdown = 0;
+    private System.Timers.Timer? _autoClockTimer;
+    private string? _lastClockAction;
+
+    // UI state
+    private string? _errorMessage;
+    private string _newEmployeeId = string.Empty;
+    private string _newEmployeeName = string.Empty;
+    private string _keypadInput = string.Empty;
+    private bool _showNameEntry = false;
+
+    // Data
+    private List<Employee> _employees = new();
+    private List<ClockEvent> _clockEvents = new();
+
+    // Resources
+    private System.Timers.Timer? _recognitionTimer;
+    private IJSObjectReference? _module;
+
+    // Debug state
+    private bool _showDebugPanel = true;
+    private readonly List<string> _debugLog = new();
+    private readonly object _debugLogLock = new(); // Thread safety for debug log
+    private int _frameCount = 0;
+    private int _detectionAttempts = 0;
+    private int _recognitionAttempts = 0;
+    private DateTime _lastFrameTime = DateTime.Now;
+    private double _avgFrameTime = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AddDebugLog("Component initializing...", suppressUIUpdate: true);
+        await RefreshData();
+        AddDebugLog($"Loaded {_employees.Count} employees and {_clockEvents.Count} clock events", suppressUIUpdate: true);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                AddDebugLog("First render - loading JavaScript module", suppressUIUpdate: true);
+                _module = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/WebcamFaceDetection.razor.js");
+                AddDebugLog("JavaScript module loaded successfully", suppressUIUpdate: true);
+
+                AddDebugLog("Verifying face recognition service...", suppressUIUpdate: true);
+                await Task.Delay(100);
+                AddDebugLog("Face recognition service ready", suppressUIUpdate: true);
+
+                _isInitializing = false;
+                await InvokeAsync(StateHasChanged);
+
+                // Auto-start camera only if employees exist (returning users)
+                if (_employees.Count > 0)
+                {
+                    AddDebugLog("Auto-starting camera for existing users...", suppressUIUpdate: true);
+                    await StartWebcam();
+                }
+                else
+                {
+                    AddDebugLog("First-time setup detected. Camera will start manually.", suppressUIUpdate: true);
+                }
+            }
+            catch (Exception ex)
+            {
+                _isInitializing = false;
+                _autoStartFailed = true;
+                _errorMessage = $"Initialization failed: {ex.Message}";
+                AddDebugLog($"❌ Initialization error: {ex.Message}");
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async Task RefreshData()
+    {
+        _employees = await employeeRepo.GetAllEmployeesAsync();
+        _clockEvents = await employeeRepo.GetClockEventsAsync();
+        StateHasChanged();
+    }
+
+    private async Task StartWebcam()
+    {
+        try
+        {
+            AddDebugLog("⏳ Starting webcam initialization...", suppressUIUpdate: true);
+            _errorMessage = null;
+            _autoStartFailed = false;
+            await InvokeAsync(StateHasChanged);
+
+            if (_module == null)
+            {
+                throw new InvalidOperationException("JavaScript module not loaded. Please refresh the page.");
+            }
+
+            AddDebugLog($"📹 Requesting webcam access (video ID: {_videoId})", suppressUIUpdate: true);
+            await _module.InvokeVoidAsync("startWebcam", _videoId);
+            _isStreaming = true;
+            AddDebugLog("✅ Webcam started successfully");
+
+            // Start recognition timer with optimized interval
+            AddDebugLog($"⏱️ Starting frame processing timer (interval: {FrameProcessingIntervalMs}ms)", suppressUIUpdate: true);
+            _recognitionTimer = new System.Timers.Timer(FrameProcessingIntervalMs);
+            _recognitionTimer.Elapsed += async (sender, e) => await ProcessFrameForRecognition();
+            _recognitionTimer.AutoReset = true;
+            _recognitionTimer.Start();
+            AddDebugLog("✅ Frame processing timer started", suppressUIUpdate: true);
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (JSException jsEx)
+        {
+            var errorMsg = ExtractErrorMessage(jsEx.Message);
+            _errorMessage = errorMsg;
+            _autoStartFailed = true;
+            AddDebugLog($"❌ Webcam error: {errorMsg}");
+
+            // User-friendly error messages
+            if (errorMsg.Contains("NotAllowedError") || errorMsg.Contains("Permission"))
+            {
+                _errorMessage = "Camera access denied. Please grant camera permissions and refresh the page.";
+            }
+            else if (errorMsg.Contains("NotFoundError") || errorMsg.Contains("No camera"))
+            {
+                _errorMessage = "No camera detected. Please connect a camera and try again.";
+            }
+
+            _isStreaming = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+            _autoStartFailed = true;
+            AddDebugLog($"❌ Exception: {ex.Message}");
+            _isStreaming = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static string ExtractErrorMessage(string message)
+    {
+        if (message.Contains("Error:"))
+        {
+            var startIndex = message.IndexOf("Error:") + 6;
+            return message.Substring(startIndex).Trim();
+        }
+        return message;
+    }
+
+    private async Task StopWebcam()
+    {
+        StopAllTimers();
+
+        if (_module != null)
+        {
+            await _module.InvokeVoidAsync("stopWebcam");
+        }
+
+        ResetState();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void StopAllTimers()
+    {
+        _recognitionTimer?.Stop();
+        _recognitionTimer?.Dispose();
+        _recognitionTimer = null;
+
+        _autoClockTimer?.Stop();
+        _autoClockTimer?.Dispose();
+        _autoClockTimer = null;
+    }
+
+    private void ResetState()
+    {
+        _isStreaming = false;
+        _isProcessing = false;
+        _isRecognizing = false;
+        _faceDetected = false;
+        _hasAttemptedRecognition = false;
+        _noMatchFound = false;
+        _isRegistering = false;
+        _recognizedEmployee = null;
+        _currentEmbedding = null;
+        _landmarkCollection.Clear();
+        _landmarkCollectionCount = 0;
+        _autoClockCountdown = 0;
+        _lastClockAction = null;
+    }
+
+    private async Task ProcessFrameForRecognition()
+    {
+        // Silent check - no logging to avoid UI spam
+        if (_isProcessing || !_isStreaming || _module == null)
+        {
+            return;
+        }
+
+        _isProcessing = true;
+        var frameStartTime = DateTime.Now;
+        bool stateChanged = false;
+
+        try
+        {
+            _frameCount++;
+            var timeSinceLastFrame = (frameStartTime - _lastFrameTime).TotalMilliseconds;
+            _avgFrameTime = _avgFrameTime == 0 ? timeSinceLastFrame : (_avgFrameTime * 0.9 + timeSinceLastFrame * 0.1);
+            _lastFrameTime = frameStartTime;
+
+            // Only log every 10th frame to reduce spam
+            if (_frameCount % 10 == 0)
+            {
+                AddDebugLog($"🎬 Frame #{_frameCount} (avg: {_avgFrameTime:F0}ms)", suppressUIUpdate: true);
+            }
+
+            // Capture frame with timeout
+            using var cts = new CancellationTokenSource(2000);
+            var imageData = await CaptureFrameAsync(cts.Token);
+
+            if (imageData == null)
+            {
+                return;
+            }
+
+            using var image = await Image.LoadAsync<Rgb24>(new MemoryStream(imageData));
+
+            // Stage 1: Fast face detection
+            _detectionAttempts++;
+            var detectionResult = await faceRecognitionService.DetectFaceAsync(image);
+
+            if (detectionResult == null)
+            {
+                stateChanged = await HandleNoFaceDetected();
+            }
+            else
+            {
+                AddDebugLog($"👤 Face detected (confidence: {detectionResult.Confidence:F2})", suppressUIUpdate: true);
+                stateChanged = await HandleFaceDetected(image, detectionResult);
+            }
+
+            var frameTime = (DateTime.Now - frameStartTime).TotalMilliseconds;
+            if (frameTime > 1000) // Only log slow frames
+            {
+                AddDebugLog($"⏱️ Slow frame: {frameTime:F0}ms", suppressUIUpdate: true);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            AddDebugLog($"⏱️ Frame timeout", suppressUIUpdate: true);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error processing frame: {ex.Message}");
+            AddDebugLog($"❌ Error: {ex.Message}");
+            _errorMessage = $"Processing error: {ex.Message}";
+            stateChanged = true;
+        }
+        finally
+        {
+            _isProcessing = false;
+
+            // BATCH UPDATE: Only update UI once if state actually changed
+            if (stateChanged)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async Task<byte[]?> CaptureFrameAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Call JavaScript with cancellation support
+            var imageDataUrl = await _module!.InvokeAsync<string>("captureFrame", cancellationToken, _videoId, _canvasId);
+
+            if (string.IsNullOrEmpty(imageDataUrl) || !imageDataUrl.Contains(','))
+            {
+                return null;
+            }
+
+            var parts = imageDataUrl.Split(',');
+            if (parts.Length < 2)
+            {
+                return null;
+            }
+
+            var base64Data = parts[1];
+            var bytes = Convert.FromBase64String(base64Data);
+            return bytes;
+        }
+        catch (OperationCanceledException)
+        {
+            AddDebugLog("⏱️ CaptureFrame timeout", suppressUIUpdate: true);
+            throw;
+        }
+        catch (JSException jsEx)
+        {
+            AddDebugLog($"❌ JS Error: {jsEx.Message}", suppressUIUpdate: true);
+            Console.WriteLine($"JavaScript error in captureFrame: {jsEx}");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            AddDebugLog($"❌ Capture error: {ex.GetType().Name}", suppressUIUpdate: true);
+            Console.WriteLine($"CaptureFrame error: {ex}");
+            return null;
+        }
+    }
+
+    private async Task<bool> HandleNoFaceDetected()
+    {
+        if (!_faceDetected)
+            return false;
+
+        AddDebugLog("🔄 Face lost", suppressUIUpdate: true);
+        _faceDetected = false;
+        _hasAttemptedRecognition = false;
+        _recognizedEmployee = null;
+        _noMatchFound = false;
+        _landmarkCollection.Clear();
+        _landmarkCollectionCount = 0;
+        _autoClockCountdown = 0;
+
+        StopAutoClockTimer();
+        return true; // State changed
+    }
+
+    private async Task<bool> HandleFaceDetected(Image<Rgb24> image, FaceDetectionResult detection)
+    {
+        var wasDetected = _faceDetected;
+        var stateChanged = false;
+
+        _faceDetected = true;
+
+        if (!wasDetected)
+        {
+            AddDebugLog("👤 NEW FACE - Starting recognition");
+            stateChanged = true;
+        }
+
+        // Stage 2: Recognition (one-shot or after collecting samples)
+        if (ShouldPerformRecognition(wasDetected))
+        {
+            AddDebugLog($"🧠 Recognition attempt #{_recognitionAttempts + 1}", suppressUIUpdate: true);
+            stateChanged = await PerformRecognition(image, detection.Landmarks) || stateChanged;
+        }
+        else if (_noMatchFound && _landmarkCollectionCount < RequiredLandmarkSamples)
+        {
+            AddDebugLog($"📊 Sample {_landmarkCollectionCount + 1}/{RequiredLandmarkSamples}", suppressUIUpdate: true);
+            stateChanged = await CollectLandmarkSample(image, detection.Landmarks) || stateChanged;
+        }
+
+        return stateChanged;
+    }
+
+    private bool ShouldPerformRecognition(bool wasDetected)
+    {
+        return !wasDetected || !_hasAttemptedRecognition;
+    }
+
+    private async Task<bool> CollectLandmarkSample(Image<Rgb24> image, PointF[] landmarks)
+    {
+        _landmarkCollection.Add(landmarks);
+        _landmarkCollectionCount++;
+
+        var stateChanged = true; // Sample count changed
+
+        if (_landmarkCollectionCount == RequiredLandmarkSamples)
+        {
+            AddDebugLog($"📋 {RequiredLandmarkSamples} samples ready");
+            stateChanged = await PerformRecognition(image, landmarks) || stateChanged;
+        }
+
+        return stateChanged;
+    }
+
+    private async Task<bool> PerformRecognition(Image<Rgb24> image, PointF[] landmarks)
+    {
+        _isRecognizing = true;
+        _recognitionAttempts++;
+        var stateChanged = true;
+
+        try
+        {
+            var recognitionStart = DateTime.Now;
+            var result = await faceRecognitionService.RecognizeAsync(image, landmarks);
+            var recognitionTime = (DateTime.Now - recognitionStart).TotalMilliseconds;
+
+            _currentEmbedding = result.Embedding;
+            _hasAttemptedRecognition = true;
+
+            if (result.Success && result.Employee != null)
+            {
+                AddDebugLog($"✅ MATCH: {result.Employee.Name} ({result.Confidence:P0}, {recognitionTime:F0}ms)");
+                await HandleRecognitionSuccess(result.Employee, result.Confidence);
+            }
+            else
+            {
+                AddDebugLog($"❌ NO MATCH ({recognitionTime:F0}ms)");
+                await HandleRecognitionFailure(landmarks);
+            }
+        }
+        finally
+        {
+            _isRecognizing = false;
+        }
+
+        return stateChanged;
+    }
+
+    private async Task HandleRecognitionSuccess(Employee employee, double confidence)
+    {
+        _recognizedEmployee = employee;
+        _matchConfidence = confidence;
+        _noMatchFound = false;
+        _landmarkCollection.Clear();
+        _landmarkCollectionCount = 0;
+
+        AddDebugLog($"🎉 {employee.Name} (ID: {employee.EmployeeId}, {(employee.IsCurrentlyIn ? "IN" : "OUT")})");
+
+        // Play success sound
+        await PlaySound("success");
+
+        // Start auto-clock countdown (will trigger its own StateHasChanged)
+        StartAutoClockCountdown();
+    }
+
+    private Task HandleRecognitionFailure(PointF[] landmarks)
+    {
+        _recognizedEmployee = null;
+        _noMatchFound = true;
+
+        if (_landmarkCollectionCount == 0)
+        {
+            _landmarkCollection.Add(landmarks);
+            _landmarkCollectionCount = 1;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void StartAutoClockCountdown()
+    {
+        StopAutoClockTimer();
+
+        _autoClockCountdown = AutoClockDelaySeconds;
+        _autoClockTimer = new System.Timers.Timer(1000);
+        _autoClockTimer.Elapsed += async (sender, e) => await OnAutoClockTick();
+        _autoClockTimer.AutoReset = true;
+        _autoClockTimer.Start();
+    }
+
+    private void StopAutoClockTimer()
+    {
+        _autoClockTimer?.Stop();
+        _autoClockTimer?.Dispose();
+        _autoClockTimer = null;
+    }
+
+    private async Task OnAutoClockTick()
+    {
+        _autoClockCountdown--;
+        await InvokeAsync(StateHasChanged);
+
+        if (_autoClockCountdown <= 0)
+        {
+            StopAutoClockTimer();
+            if (_recognizedEmployee != null)
+            {
+                await (_recognizedEmployee.IsCurrentlyIn ? ClockOut(true) : ClockIn(true));
+            }
+        }
+    }
+
+    private void CancelAutoClock()
+    {
+        StopAutoClockTimer();
+        _autoClockCountdown = 0;
+        StateHasChanged();
+    }
+
+    private async Task PlaySound(string type)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("eval", $"new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuFzvLdjDsLGGS46uqeUBELTqXh8bllHAU2jdXuzX1AFAxNpdj05KdZBi2BzPDinj0LElyx6+qnVxoKTKXj8bllHAU2jdXuzn0/BCtBo+vvsWw=').play()");
+        }
+        catch
+        {
+            // Ignore sound errors
+        }
+    }
+
+    private async Task RegisterNewEmployee()
+    {
+        if (_currentEmbedding == null || string.IsNullOrWhiteSpace(_newEmployeeId) || string.IsNullOrWhiteSpace(_newEmployeeName))
+            return;
+
+        try
+        {
+            var employee = await employeeRepo.AddEmployeeAsync(_newEmployeeId, _newEmployeeName, _currentEmbedding);
+            _recognizedEmployee = employee;
+            _noMatchFound = false;
+            _hasAttemptedRecognition = true;
+            _landmarkCollection.Clear();
+            _landmarkCollectionCount = 0;
+            _newEmployeeId = string.Empty;
+            _newEmployeeName = string.Empty;
+            _keypadInput = string.Empty;
+            _showNameEntry = false;
+            _isRegistering = false; // Release registration lock
+
+            await RefreshData();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error registering employee: {ex.Message}";
+        }
+    }
+
+    // Keypad Methods
+    private void KeypadPress(string digit)
+    {
+        if (_keypadInput.Length < 10) // Limit to 10 digits
+        {
+            _keypadInput += digit;
+            _isRegistering = true; // Lock registration form open
+            StateHasChanged();
+        }
+    }
+
+    private void KeypadClear()
+    {
+        if (_keypadInput.Length > 0)
+        {
+            _keypadInput = _keypadInput.Substring(0, _keypadInput.Length - 1);
+        }
+        else
+        {
+            // Full clear and cancel registration
+            CancelRegistration();
+        }
+        StateHasChanged();
+    }
+
+    private void KeypadSubmit()
+    {
+        if (!string.IsNullOrWhiteSpace(_keypadInput))
+        {
+            _newEmployeeId = _keypadInput;
+            _showNameEntry = true;
+            StateHasChanged();
+        }
+    }
+
+    private void CancelRegistration()
+    {
+        _keypadInput = string.Empty;
+        _newEmployeeId = string.Empty;
+        _newEmployeeName = string.Empty;
+        _showNameEntry = false;
+        _isRegistering = false; // Release registration lock
+        _noMatchFound = false;
+        _currentEmbedding = null;
+        _landmarkCollection.Clear();
+        _landmarkCollectionCount = 0;
+        StateHasChanged();
+    }
+
+    private void CancelRecognition()
+    {
+        _recognizedEmployee = null;
+        _faceDetected = false;
+        _hasAttemptedRecognition = false;
+        StateHasChanged();
+    }
+
+    private async Task ClockIn(bool isAuto)
+    {
+        if (_recognizedEmployee == null)
+            return;
+
+        _recognizedEmployee.LastClockIn = DateTime.UtcNow;
+        await employeeRepo.UpdateEmployeeAsync(_recognizedEmployee);
+
+        var clockEvent = new ClockEvent
+        {
+            Id = Guid.NewGuid().ToString(),
+            EmployeeId = _recognizedEmployee.EmployeeId,
+            EmployeeName = _recognizedEmployee.Name,
+            Timestamp = DateTime.UtcNow,
+            EventType = ClockEventType.ClockIn,
+            MatchConfidence = _matchConfidence,
+        };
+
+        await employeeRepo.AddClockEventAsync(clockEvent);
+
+        _lastClockAction = $"Clocked in at {DateTime.Now:HH:mm:ss}";
+        _autoClockCountdown = 0;
+
+        if (isAuto)
+        {
+            await PlaySound("clockin");
+        }
+
+        await RefreshData();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ClockOut(bool isAuto)
+    {
+        if (_recognizedEmployee == null)
+            return;
+
+        _recognizedEmployee.LastClockOut = DateTime.UtcNow;
+        await employeeRepo.UpdateEmployeeAsync(_recognizedEmployee);
+
+        var clockEvent = new ClockEvent
+        {
+            Id = Guid.NewGuid().ToString(),
+            EmployeeId = _recognizedEmployee.EmployeeId,
+            EmployeeName = _recognizedEmployee.Name,
+            Timestamp = DateTime.UtcNow,
+            EventType = ClockEventType.ClockOut,
+            MatchConfidence = _matchConfidence,
+        };
+
+        await employeeRepo.AddClockEventAsync(clockEvent);
+
+        _lastClockAction = $"Clocked out at {DateTime.Now:HH:mm:ss}";
+        _autoClockCountdown = 0;
+
+        if (isAuto)
+        {
+            await PlaySound("clockout");
+        }
+
+        await RefreshData();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RejectRecognition()
+    {
+        if (_recognizedEmployee == null)
+            return;
+
+        if (await JS.InvokeAsync<bool>("confirm", $"Are you sure you want to delete the profile for {_recognizedEmployee.Name}?"))
+        {
+            await employeeRepo.DeleteEmployeeAsync(_recognizedEmployee.Id);
+            _recognizedEmployee = null;
+            await RefreshData();
+        }
+    }
+
+    private async Task DeleteEmployee(string id)
+    {
+        var employee = _employees.FirstOrDefault(e => e.Id == id);
+        if (employee != null && await JS.InvokeAsync<bool>("confirm", $"Are you sure you want to delete {employee.Name}?"))
+        {
+            await employeeRepo.DeleteEmployeeAsync(id);
+            await RefreshData();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        AddDebugLog("🔴 Component disposing...", suppressUIUpdate: true);
+        await StopWebcam();
+
+        if (_module != null)
+        {
+            await _module.DisposeAsync();
+        }
+
+        StopAllTimers();
+        AddDebugLog("✅ Component disposed", suppressUIUpdate: true);
+    }
+
+    // Debug helpers
+    private void AddDebugLog(string message, bool suppressUIUpdate = false)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return;
+
+        try
+        {
+            var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+            var logEntry = $"[{timestamp}] {message}";
+
+            lock (_debugLogLock)
+            {
+                _debugLog.Insert(0, logEntry);
+
+                // Keep only last 50 entries
+                if (_debugLog.Count > 50)
+                {
+                    _debugLog.RemoveRange(50, _debugLog.Count - 50);
+                }
+            }
+
+            // Also log to console for external monitoring
+            Console.WriteLine(logEntry);
+
+            // ONLY update UI for critical user-facing events (NOT during frame processing)
+            if (!suppressUIUpdate)
+            {
+                var isCritical = message.Contains("✅ MATCH:") || 
+                                 message.Contains("❌") && message.Contains("Error") ||
+                                 message.Contains("Webcam") ||
+                                 message.Contains("NEW FACE");
+
+                if (isCritical)
+                {
+                    // Use Task.Run to avoid blocking
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await Task.Delay(100); // Small delay to batch multiple rapid updates
+                            await InvokeAsync(StateHasChanged);
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                            // Component disposed, ignore
+                        }
+                        catch { }
+                    });
+                }
+            }
+        }
+        catch
+        {
+            // Fail silently
+        }
+    }
+
+    private void ClearDebugLog()
+    {
+        lock (_debugLogLock)
+        {
+            _debugLog.Clear();
+        }
+
+        _frameCount = 0;
+        _detectionAttempts = 0;
+        _recognitionAttempts = 0;
+
+        StateHasChanged();
+    }
+
+    private string GetLogClass(string log)
+    {
+        if (string.IsNullOrWhiteSpace(log))
+            return "text-light";
+
+        if (log.Contains("❌") || log.Contains("Error") || log.Contains("ERROR"))
+            return "text-danger";
+        if (log.Contains("✅") || log.Contains("SUCCESS"))
+            return "text-success";
+        if (log.Contains("⚠️") || log.Contains("WARNING"))
+            return "text-warning";
+        if (log.Contains("🧠") || log.Contains("Recognition") || log.Contains("MATCH"))
+            return "text-info";
+        if (log.Contains("🔍") || log.Contains("Detection"))
+            return "text-primary";
+        if (log.Contains("⏱️") || log.Contains("ms") || log.Contains("Timeout"))
+            return "text-warning-emphasis";
+
+        return "text-light";
+    }
+}
+

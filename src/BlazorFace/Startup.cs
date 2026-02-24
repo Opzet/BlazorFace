@@ -38,6 +38,12 @@ public static class Startup
         services.AddMemoryCache();
         services.AddSingleton<IClock>(SystemClock.Instance);
         services.AddSingleton<IFilenameGrouper, CommonPrefixFilenameGrouper>();
+        services.AddSingleton<IEmployeeRepository, JsonFileEmployeeRepository>();
+
+        // Simplified: Use singleton for FaceRecognitionService (thread-safe with semaphores)
+        services.AddSingleton<FaceRecognitionService>();
+
+        // Keep these for other demos that might use them directly
         if (onnxModelFileOpener is null)
         {
             services.AddTransient<IFaceDetectorWithLandmarks, ScrfdDetector>();
@@ -50,14 +56,6 @@ public static class Startup
             services.AddTransient<IFaceEmbeddingsGenerator, ArcFaceEmbeddingsGenerator>(sp => new ArcFaceEmbeddingsGenerator(onnxModelFileOpener.ReadAllBytes(@"onnx/arcfaceresnet100-11-int8.onnx"), sp.GetRequiredService<ArcFaceEmbeddingsGeneratorOptions>()));
             services.AddTransient<IEyeStateDetector, OpenVinoOpenClosedEye0001>(sp => new OpenVinoOpenClosedEye0001(onnxModelFileOpener.ReadAllBytes(@"onnx/open_closed_eye.onnx"), sp.GetRequiredService<OpenVinoOpenClosedEye0001Options>()));
         }
-
-        services.AddSingleton<ObjectPoolProvider, DefaultObjectPoolProvider>(sp => new DefaultObjectPoolProvider
-        {
-            MaximumRetained = 1,
-        });
-        AddInjectionObjectPool<IFaceDetectorWithLandmarks>(services);
-        AddInjectionObjectPool<IFaceEmbeddingsGenerator>(services);
-        AddInjectionObjectPool<IEyeStateDetector>(services);
     }
 
     /// <summary>

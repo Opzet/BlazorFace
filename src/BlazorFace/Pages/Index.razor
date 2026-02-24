@@ -1,5 +1,15 @@
 @page "/"
-<PageTitle>Understanding Face Recognition</PageTitle>
+@using Microsoft.AspNetCore.Components
+@inject NavigationManager Navigation
+
+<PageTitle>Redirecting...</PageTitle>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Navigation.NavigateTo("/ShiftClock", forceLoad: false);
+    }
+}
 
 <!-- adapted from https://getbootstrap.com/docs/5.2/examples/heroes/ -->
 <div class="container">

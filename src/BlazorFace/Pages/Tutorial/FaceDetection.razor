@@ -13,7 +13,31 @@
 
     <div class="card mt-4 mb-3">
         <div class="card-header text-center">
-            Live Demo: Face Detection
+            Live Demo: Real-time Face Detection with Webcam
+        </div>
+        <div class="card-body">
+            <WebcamFaceDetection />
+            <div class="mt-3">
+                <details class="small text-muted">
+                    <summary style="cursor: pointer;">Troubleshooting webcam issues</summary>
+                    <div class="mt-2">
+                        <p><strong>If the webcam doesn't work:</strong></p>
+                        <ul>
+                            <li>Ensure you're using HTTPS (required for camera access)</li>
+                            <li>Check that camera permissions are granted in your browser</li>
+                            <li>Close other applications that might be using the camera</li>
+                            <li>Try a different browser (Chrome, Edge, Firefox recommended)</li>
+                            <li>Ensure your camera is properly connected and recognized by your system</li>
+                        </ul>
+                    </div>
+                </details>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mt-4 mb-3">
+        <div class="card-header text-center">
+            Demo: Face Detection from Image
         </div>
         <div class="card-body">
             <FaceDetectionDemo />
